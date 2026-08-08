@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "dutchkem-model-4.0": {
+      "command": "python",
+      "args": ["-m", "web.mcp_server"],
+      "cwd": "."
+    }
+  }
+}

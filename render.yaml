@@ -1,0 +1,24 @@
+# Render Blueprint — deploy Dutchkem Model 4.0 in one click.
+# Connect this repo to Render, or use:  https://render.com/blueprints/<repo>
+services:
+  - type: web
+    name: dutchkem-model-4.0
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python orchestrator_v4.py --web
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+      - key: WEB_HOST
+        value: 0.0.0.0
+      - key: WEB_PORT
+        value: 5000
+      # Runtime config (set these in Render dashboard if you want them, or
+      # rely on provider auto-detection). Add your keys as Render secrets:
+      #   GROQ_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY, ...
+      - key: MODEL_PROVIDER
+        value: groq
+      - key: MULTI_PROVIDER_FALLBACK
+        value: "true"

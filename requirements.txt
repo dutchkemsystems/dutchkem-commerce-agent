@@ -1,0 +1,11 @@
+requests>=2.31.0
+python-dotenv>=1.0.0
+openai>=1.40.0
+chromadb>=0.5.0
+gradio>=4.44.0
+flask>=3.0.0
+pyyaml>=6.0.1
+packaging>=24.0
+# Model Context Protocol (MCP) server tools — official open-source SDK (MIT).
+# v2 renamed FastMCP -> MCPServer, so pin <2 until you migrate web/mcp_server.py.
+mcp>=1.28,<2
