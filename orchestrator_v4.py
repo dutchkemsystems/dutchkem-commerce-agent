@@ -83,7 +83,7 @@ class DutchkemModel4:
         self.performance_optimizer = PerformanceOptimizer()
         self.fleet = FleetCommander(max_workers=8)
 
-        self.memory = PersistentMemory("dutchkem_global")
+        self.memory = PersistentMemory("dutchkem_global", path=os.getenv("MEMORY_PATH"))
         self.browser = BuiltInBrowser()
         self.workflows = WorkflowEngine()
         self.plugins = PluginManager()
@@ -92,7 +92,7 @@ class DutchkemModel4:
             allow_network=os.getenv("SANDBOX_ALLOW_NETWORK", "false").lower() == "true",
         )
         self.team_manager = TeamManager()
-        self.evolution = SelfImprovementEvolution()
+        self.evolution = SelfImprovementEvolution(log_path=os.getenv("EVOLUTION_LOG_PATH"))
         self.voice = VoiceAssistant()
 
         self.agents = {
@@ -327,12 +327,24 @@ class DutchkemModel4:
         ))
 
     def run_web(self):
+        import time as _time
         from web.app import create_app
         app = create_app(self)
         host = os.getenv("WEB_HOST", "0.0.0.0")
         port = int(os.getenv("WEB_PORT") or os.getenv("PORT") or "5000")
         print(f"🌐 Starting web interface at http://localhost:{port}")
-        app.launch(server_name=f"{host}:{port}", prevent_thread_lock=True, quiet=True)
+        app.launch(
+            server_name=host,
+            server_port=port,
+            prevent_thread_lock=True,
+            quiet=True,
+        )
+        print(f"✅ Gradio UI listening on {host}:{port}")
+        try:
+            while True:
+                _time.sleep(3600)
+        except KeyboardInterrupt:
+            pass
 
     def one_shot(self, text: str):
         result = self.process_request(text)

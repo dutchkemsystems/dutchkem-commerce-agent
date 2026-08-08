@@ -2,6 +2,7 @@
 """Initialize the knowledge base with seed documentation."""
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -25,7 +26,7 @@ SEED_DOCS = [
 
 
 def main():
-    memory = PersistentMemory("dutchkem_knowledge")
+    memory = PersistentMemory("dutchkem_knowledge", path=os.environ.get("KNOWLEDGE_PATH"))
     for namespace, doc_type, content in SEED_DOCS:
         memory.add(content, metadata={"namespace": namespace, "doc_type": doc_type}, namespace=namespace)
     print(f"Seeded {len(SEED_DOCS)} knowledge documents.")

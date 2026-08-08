@@ -1,5 +1,8 @@
 # Render Blueprint — deploy Dutchkem Model 4.0 in one click.
 # Connect this repo to Render, or use:  https://render.com/blueprints/<repo>
+#
+# IMPORTANT: Render injects PORT for the app. Do NOT set WEB_PORT here — the
+# code already prefers `PORT` when WEB_PORT is absent (orchestrator_v4.py:333).
 services:
   - type: web
     name: dutchkem-model-4.0
@@ -9,17 +12,77 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: python orchestrator_v4.py --web
     healthCheckPath: /
+    # Persistent disk so memory / evolution data survive redeploys.
+    # Wired into the code via MEMORY_PATH / EVOLUTION_LOG_PATH below.
+    disk:
+      name: dutchkem-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.0"
       - key: WEB_HOST
         value: 0.0.0.0
-      - key: WEB_PORT
-        value: 5000
-      # Runtime config (set these in Render dashboard if you want them, or
-      # rely on provider auto-detection). Add your keys as Render secrets:
-      #   GROQ_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY, ...
+      # Runtime / provider selection
       - key: MODEL_PROVIDER
         value: groq
       - key: MULTI_PROVIDER_FALLBACK
         value: "true"
+      # No local Ollama on Render — disable so the client never probes it.
+      - key: OLLAMA_AUTO_FALLBACK
+        value: "false"
+      - key: OLLAMA_MODEL
+        value: qwen3-coder
+      - key: MODEL_TEMPERATURE
+        value: 0.2
+      - key: MAX_ATTEMPT_SECONDS
+        value: "30"
+      # Sandbox
+      - key: SANDBOX_TIMEOUT
+        value: "60"
+      - key: SANDBOX_ALLOW_NETWORK
+        value: "false"
+      # Persistent paths (mount the disk above)
+      - key: MEMORY_PATH
+        value: /opt/render/project/src/data/memory
+      - key: KNOWLEDGE_PATH
+        value: /opt/render/project/src/data/knowledge
+      - key: EVOLUTION_LOG_PATH
+        value: /opt/render/project/src/data/evolution.jsonl
+      # Provider endpoint defaults (overridable per-provider)
+      - key: OPENAI_BASE_URL
+        value: https://api.openai.com/v1
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: ANTHROPIC_BASE_URL
+        value: https://api.anthropic.com
+      - key: ANTHROPIC_MODEL
+        value: claude-3-5-sonnet
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+      - key: OPENROUTER_MODEL
+        value: google/gemma-4-26b-a4b-it:free
+      # API keys — sync: false keeps blueprint deploys from overwriting them.
+      # Set the real values in the Render dashboard as secrets, or run
+      # scripts/setup_render.ps1 which pushes your local .env keys via the API.
+      # Recommend at least GROQ_API_KEY (and/or DEEPSEEK / OPENROUTER).
+      - key: GROQ_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: DASHSCOPE_API_KEY
+        sync: false
+      - key: MISTRAL_API_KEY
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_API_KEYS
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEYS
+        sync: false
