@@ -5,6 +5,7 @@ services:
     name: dutchkem-model-4.0
     runtime: python
     plan: free
+    autoDeploy: true
     buildCommand: pip install -r requirements.txt
     startCommand: python orchestrator_v4.py --web
     healthCheckPath: /

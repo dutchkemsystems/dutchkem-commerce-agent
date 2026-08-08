@@ -1,0 +1,33 @@
+name: Deploy to Render
+
+# Auto-deploys to Render on every push to main.
+# Two ways this fires:
+#   1. Render's own auto-deploy (enabled when the repo is connected in the
+#      dashboard) — nothing needed here.
+#   2. This workflow, which calls the Render Deploy API. Requires two repo
+#      secrets (Settings -> Secrets and variables -> Actions):
+#        RENDER_API_KEY    (Render dashboard: Account -> API Keys)
+#        RENDER_SERVICE_ID (from your service URL, e.g. srv-xxxx)
+#   Until those secrets are added, this job is skipped (Render auto-deploy
+#   still covers it).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  render-deploy:
+    name: Trigger Render deploy
+    runs-on: ubuntu-latest
+    if: ${{ secrets.RENDER_API_KEY != '' && secrets.RENDER_SERVICE_ID != '' }}
+    steps:
+      - name: Deploy via Render API
+        run: |
+          curl -sS -X POST \
+            "https://api.render.com/v1/services/${{ secrets.RENDER_SERVICE_ID }}/deploys" \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            -H "Accept: application/json" \
+            -H "Content-Type: application/json" \
+            -d '{}'
+          echo "Deploy triggered: https://dashboard.render.com/web/srv/${{ secrets.RENDER_SERVICE_ID }}"
