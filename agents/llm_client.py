@@ -98,7 +98,7 @@ PROVIDERS = {
         "key_env": "OPENROUTER_API_KEY", "keys_env": "OPENROUTER_API_KEYS",
         "base_url_env": "OPENROUTER_BASE_URL", "model_env": "OPENROUTER_MODEL",
         "default_base_url": "https://openrouter.ai/api/v1",
-        "default_model": "google/gemma-4-26b-a4b-it:free",
+        "default_model": "poolside/laguna-s-2.1:free",
         "kind": "openai",
         "models": [
             "google/gemma-4-26b-a4b-it:free", "google/gemma-4-31b-it:free",
