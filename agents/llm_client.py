@@ -357,11 +357,13 @@ class LLMClient:
         if requests is None:
             return False
         now = time.time()
-        if self._ollama_cache is not None and now - self._ollama_cache[1] < 30:
+        if self._ollama_cache is not None and now - self._ollama_cache[1] < (
+            30 if self._ollama_cache[0] else 5
+        ):
             return self._ollama_cache[0]
         ok = False
         try:
-            resp = requests.get(f"{self.ollama_base_url}/api/tags", timeout=2)
+            resp = requests.get(f"{self.ollama_base_url}/api/tags", timeout=8)
             ok = resp.status_code == 200
         except Exception:  # noqa: BLE001
             ok = False
@@ -384,7 +386,7 @@ class LLMClient:
             resp = requests.post(
                 url, json=payload,
                 headers={"Content-Type": "application/json"},
-                timeout=max(5, min(120, int(self.max_attempt_seconds))),
+                timeout=max(60, int(self.max_attempt_seconds)),
             )
             resp.raise_for_status()
             if stream:
