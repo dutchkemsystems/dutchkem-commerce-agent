@@ -125,7 +125,7 @@ PROVIDERS = {
         "base_url_env": "OLLAMA_BASE_URL", "model_env": "OLLAMA_MODEL",
         "default_base_url": "http://localhost:11434", "default_model": "qwen3-coder",
         "kind": "ollama",
-        "models": ["qwen3-coder", "qwen2.5-coder:32b", "deepseek-coder-v2", "deepseek-r1", "llama3.3", "qwen2.5:14b"],
+        "models": ["qwen3-coder", "qwen3-coder:1.7b", "qwen2.5-coder", "qwen2.5-coder:3b", "qwen2.5-coder:1.5b", "deepseek-coder-v2", "deepseek-r1", "llama3.3", "qwen2.5:14b"],
     },
 }
 
