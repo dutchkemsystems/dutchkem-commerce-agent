@@ -24,12 +24,16 @@ Per-provider variables (X = provider name, e.g. DEEPSEEK, QWEN, GROQ...):
     X_MODEL                   model name
 """
 
-import os
 import json
+import logging
+import os
+import threading
 import time
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+log = logging.getLogger("dutchkem.llm")
 
 try:
     import requests
@@ -210,6 +214,8 @@ class LLMClient:
         self.ollama_auto_fallback = bool(self.config.get("ollama_auto_fallback", True))
         self.multi_provider_fallback = bool(self.config.get("multi_provider_fallback", True))
         self.selected_provider = _normalize_provider(self.config["provider"]) or "openai"
+        self._state_lock = threading.RLock()
+        self._key_index_lock = threading.Lock()
         self._apply_settings(self._provider_settings(self.selected_provider))
         self._ollama_cache = None
 
@@ -224,12 +230,13 @@ class LLMClient:
         return {"name": name, "kind": spec["kind"], "keys": keys, "base_url": base_url, "model": model}
 
     def _apply_settings(self, s: dict):
-        self.provider = s["name"]
-        self.kind = s["kind"]
-        self.keys = list(s["keys"])
-        self.base_url = s["base_url"].rstrip("/")
-        self.model = s["model"]
-        self._key_index = 0
+        with self._state_lock:
+            self.provider = s["name"]
+            self.kind = s["kind"]
+            self.keys = list(s["keys"])
+            self.base_url = s["base_url"].rstrip("/")
+            self.model = s["model"]
+            self._key_index = 0
 
     def _restore_selected(self):
         if self.selected_provider in PROVIDERS:
@@ -270,12 +277,18 @@ class LLMClient:
         return len(self.keys)
 
     def _next_key(self) -> str:
-        """Round-robin key selection (rotates on each call)."""
+        """Round-robin key selection (rotates on each call, thread-safe)."""
         if not self.keys:
             return ""
-        key = self.keys[self._key_index % len(self.keys)]
-        self._key_index = (self._key_index + 1) % len(self.keys)
+        with self._key_index_lock:
+            key = self.keys[self._key_index % len(self.keys)]
+            self._key_index = (self._key_index + 1) % len(self.keys)
         return key
+
+    def _rotate(self):
+        """Advance the round-robin key index (thread-safe)."""
+        with self._key_index_lock:
+            self._key_index = (self._key_index + 1) % len(self.keys) if self.keys else 0
 
     @staticmethod
     def _retryable(status_code: int) -> bool:
@@ -285,14 +298,15 @@ class LLMClient:
 
     def set_model(self, provider: str = None, model: str = None) -> dict:
         """Switch to another provider and/or model at runtime. Returns new status."""
-        provider = _normalize_provider(provider or self.selected_provider)
-        if provider not in PROVIDERS:
-            provider = "openai"
-        s = self._provider_settings(provider)
-        if model:
-            s = dict(s, model=model.strip())
-        self.selected_provider = provider
-        self._apply_settings(s)
+        with self._state_lock:
+            provider = _normalize_provider(provider or self.selected_provider)
+            if provider not in PROVIDERS:
+                provider = "openai"
+            s = self._provider_settings(provider)
+            if model:
+                s = dict(s, model=model.strip())
+            self.selected_provider = provider
+            self._apply_settings(s)
         return self.status()
 
     def list_providers(self) -> dict:
@@ -324,16 +338,17 @@ class LLMClient:
     def _budget(self, started: float) -> int:
         """Per-request timeout derived from the remaining attempt budget."""
         remaining = self.max_attempt_seconds - (time.time() - started)
-        if remaining <= 1:
+        if remaining <= 0:
             return 0
-        return max(5, min(120, int(remaining)))
+        return max(1, min(120, int(remaining)))
 
     def _timeout(self, started: float) -> tuple:
-        """(connect, read) timeout — connect capped at 5s so dead hosts fail fast."""
+        """(connect, read) timeout — never exceeds the remaining budget."""
         read = self._budget(started)
         if read == 0:
-            return (5, 5)
-        return (5, read)
+            return (1, 1)
+        connect = min(5, max(1, read))
+        return (connect, read)
 
     # ---------- Local Ollama fallback ----------
 
@@ -419,12 +434,14 @@ class LLMClient:
                 local = self._try_ollama(messages, temperature=temperature, max_tokens=max_tokens)
                 if local is not None:
                     return local
+            log.info("no configured providers — falling back to offline mode")
             return self._offline_response(messages)
         started = time.time()
-        last_error = "no providers responded"
+        first_error = "no providers responded"
+        errors = []
         for s in candidates:
             if time.time() - started >= self.max_attempt_seconds:
-                last_error = "attempt budget exhausted across providers"
+                first_error = "attempt budget exhausted across providers"
                 break
             self._apply_settings(s)
             if s["kind"] == "anthropic":
@@ -434,13 +451,27 @@ class LLMClient:
             if not (isinstance(result, str) and result.startswith("[LLM error")):
                 self._restore_selected()
                 return result
-            last_error = result
+            errors.append((s["name"], result))
         self._restore_selected()
         if self.ollama_auto_fallback:
             local = self._try_ollama(messages, temperature=temperature, max_tokens=max_tokens)
             if local is not None:
                 return local
-        return last_error
+        if errors:
+            def _clean(msg: str) -> str:
+                msg = msg.strip()
+                if msg.startswith("[LLM error:") and msg.endswith("]"):
+                    return msg[len("[LLM error:"):-1].strip()
+                return msg
+            first_error = f"{_clean(errors[0][1])} (provider '{errors[0][0]}')"
+            if len(errors) > 1:
+                names = ", ".join(name for name, _ in errors[1:])
+                first_error = (
+                    f"{first_error}; also tried provider(s): {names} "
+                    f"(last error: {_clean(errors[-1][1])})"
+                )
+        log.warning("all providers failed — %s", first_error)
+        return f"[LLM error: {first_error}]"
 
     def chat_stream(self, messages, temperature: float = None):
         """Yield chunks of a streaming chat completion (with cross-provider + Ollama fallback)."""
@@ -480,19 +511,23 @@ class LLMClient:
 
     def _chat_openai(self, messages, temperature, max_tokens, started=None) -> str:
         started = started or time.time()
-        url = f"{self.base_url}/chat/completions"
+        with self._state_lock:
+            url = f"{self.base_url}/chat/completions"
+            model = self.model
+            keys = list(self.keys)
+            key_index = self._key_index
         base_payload = {
-            "model": self.model,
+            "model": model,
             "messages": messages,
             "temperature": self.temperature if temperature is None else temperature,
             "max_tokens": max_tokens,
         }
-        attempts = max(1, len(self.keys))
+        attempts = max(1, len(keys))
         last_error = "no keys configured"
         for offset in range(attempts):
             if time.time() - started >= self.max_attempt_seconds:
                 break
-            key = self.keys[(self._key_index + offset) % len(self.keys)] if self.keys else ""
+            key = keys[(key_index + offset) % len(keys)] if keys else ""
             headers = {
                 "Authorization": f"Bearer {key}",
                 "Content-Type": "application/json",
@@ -500,32 +535,36 @@ class LLMClient:
             try:
                 resp = requests.post(url, headers=headers, json=base_payload, timeout=self._timeout(started))
                 if resp.status_code in (401, 403) or self._retryable(resp.status_code):
-                    self._key_index = (self._key_index + 1) % len(self.keys) if self.keys else 0
+                    self._rotate()
                     last_error = f"HTTP {resp.status_code} ({resp.text[:120]})"
                     continue
                 resp.raise_for_status()
                 data = resp.json()
                 return data["choices"][0]["message"]["content"]
-            except Exception as exc:
-                self._key_index = (self._key_index + 1) % len(self.keys) if self.keys else 0
+            except Exception as exc:  # noqa: BLE001
+                self._rotate()
                 last_error = str(exc)
         return f"[LLM error: all keys failed — {last_error}]"
 
     def _stream_openai(self, messages, temperature, started=None):
         started = started or time.time()
-        url = f"{self.base_url}/chat/completions"
+        with self._state_lock:
+            url = f"{self.base_url}/chat/completions"
+            model = self.model
+            keys = list(self.keys)
+            key_index = self._key_index
         base_payload = {
-            "model": self.model,
+            "model": model,
             "messages": messages,
             "temperature": self.temperature if temperature is None else temperature,
             "stream": True,
         }
-        attempts = max(1, len(self.keys))
+        attempts = max(1, len(keys))
         last_error = "no keys configured"
         for offset in range(attempts):
             if time.time() - started >= self.max_attempt_seconds:
                 break
-            key = self.keys[(self._key_index + offset) % len(self.keys)] if self.keys else ""
+            key = keys[(key_index + offset) % len(keys)] if keys else ""
             headers = {
                 "Authorization": f"Bearer {key}",
                 "Content-Type": "application/json",
@@ -533,11 +572,11 @@ class LLMClient:
             try:
                 with requests.post(url, headers=headers, json=base_payload, stream=True, timeout=self._timeout(started)) as resp:
                     if resp.status_code in (401, 403) or self._retryable(resp.status_code):
-                        self._key_index = (self._key_index + 1) % len(self.keys) if self.keys else 0
+                        self._rotate()
                         last_error = f"HTTP {resp.status_code} ({resp.text[:120]})"
                         continue
                     resp.raise_for_status()
-                    self._key_index = (self._key_index + 1) % len(self.keys) if self.keys else 0
+                    self._rotate()
                     for line in resp.iter_lines(decode_unicode=True):
                         if not line or not line.startswith("data:"):
                             continue
@@ -551,8 +590,8 @@ class LLMClient:
                         except (json.JSONDecodeError, KeyError, IndexError):
                             continue
                     return
-            except Exception as exc:
-                self._key_index = (self._key_index + 1) % len(self.keys) if self.keys else 0
+            except Exception as exc:  # noqa: BLE001
+                self._rotate()
                 last_error = str(exc)
         yield f"[LLM error: all keys failed — {last_error}]"
 
@@ -583,44 +622,54 @@ class LLMClient:
     def _chat_anthropic(self, messages, temperature, max_tokens, started=None) -> str:
         started = started or time.time()
         system, turns = self._to_anthropic_messages(messages)
+        with self._state_lock:
+            url = self._anthropic_url()
+            model = self.model
+            keys = list(self.keys)
+            key_index = self._key_index
         base_payload = {
-            "model": self.model,
+            "model": model,
             "max_tokens": max_tokens,
             "temperature": self.temperature if temperature is None else temperature,
             "messages": turns,
         }
         if system:
             base_payload["system"] = system
-        attempts = max(1, len(self.keys))
+        attempts = max(1, len(keys))
         last_error = "no keys configured"
         for offset in range(attempts):
             if time.time() - started >= self.max_attempt_seconds:
                 break
-            key = self.keys[(self._key_index + offset) % len(self.keys)] if self.keys else ""
+            key = keys[(key_index + offset) % len(keys)] if keys else ""
             headers = {
                 "x-api-key": key,
                 "anthropic-version": "2023-06-01",
                 "Content-Type": "application/json",
             }
             try:
-                resp = requests.post(self._anthropic_url(), headers=headers, json=base_payload, timeout=self._timeout(started))
+                resp = requests.post(url, headers=headers, json=base_payload, timeout=self._timeout(started))
                 if resp.status_code in (401, 403) or self._retryable(resp.status_code):
-                    self._key_index = (self._key_index + 1) % len(self.keys) if self.keys else 0
+                    self._rotate()
                     last_error = f"HTTP {resp.status_code} ({resp.text[:120]})"
                     continue
                 resp.raise_for_status()
                 data = resp.json()
                 return "".join(block.get("text", "") for block in data.get("content", []))
-            except Exception as exc:
-                self._key_index = (self._key_index + 1) % len(self.keys) if self.keys else 0
+            except Exception as exc:  # noqa: BLE001
+                self._rotate()
                 last_error = str(exc)
         return f"[LLM error: all keys failed — {last_error}]"
 
     def _stream_anthropic(self, messages, temperature, started=None):
         started = started or time.time()
         system, turns = self._to_anthropic_messages(messages)
+        with self._state_lock:
+            url = self._anthropic_url()
+            model = self.model
+            keys = list(self.keys)
+            key_index = self._key_index
         base_payload = {
-            "model": self.model,
+            "model": model,
             "max_tokens": 2048,
             "temperature": self.temperature if temperature is None else temperature,
             "messages": turns,
@@ -628,12 +677,12 @@ class LLMClient:
         }
         if system:
             base_payload["system"] = system
-        attempts = max(1, len(self.keys))
+        attempts = max(1, len(keys))
         last_error = "no keys configured"
         for offset in range(attempts):
             if time.time() - started >= self.max_attempt_seconds:
                 break
-            key = self.keys[(self._key_index + offset) % len(self.keys)] if self.keys else ""
+            key = keys[(key_index + offset) % len(keys)] if keys else ""
             headers = {
                 "x-api-key": key,
                 "anthropic-version": "2023-06-01",
@@ -641,15 +690,15 @@ class LLMClient:
             }
             try:
                 with requests.post(
-                    self._anthropic_url(), headers=headers, json=base_payload,
+                    url, headers=headers, json=base_payload,
                     stream=True, timeout=self._timeout(started),
                 ) as resp:
                     if resp.status_code in (401, 403) or self._retryable(resp.status_code):
-                        self._key_index = (self._key_index + 1) % len(self.keys) if self.keys else 0
+                        self._rotate()
                         last_error = f"HTTP {resp.status_code} ({resp.text[:120]})"
                         continue
                     resp.raise_for_status()
-                    self._key_index = (self._key_index + 1) % len(self.keys) if self.keys else 0
+                    self._rotate()
                     for line in resp.iter_lines(decode_unicode=True):
                         if not line or not line.startswith("data:"):
                             continue
@@ -665,8 +714,8 @@ class LLMClient:
                         except json.JSONDecodeError:
                             continue
                     return
-            except Exception as exc:
-                self._key_index = (self._key_index + 1) % len(self.keys) if self.keys else 0
+            except Exception as exc:  # noqa: BLE001
+                self._rotate()
                 last_error = str(exc)
         yield f"[LLM error: all keys failed — {last_error}]"
 

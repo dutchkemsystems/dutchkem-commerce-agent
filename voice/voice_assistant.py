@@ -1,7 +1,5 @@
 """Voice assistant — parse spoken-style commands and text-to-speech hooks."""
 
-import re
-from typing import Dict, List
 
 try:
     import pyttsx3  # optional TTS engine
@@ -27,7 +25,7 @@ class VoiceAssistant:
     def __init__(self, enable_tts: bool = False):
         self.enable_tts = enable_tts and pyttsx3 is not None
 
-    def parse(self, text: str) -> Dict:
+    def parse(self, text: str) -> dict:
         lower = text.lower().strip()
         for intent, keywords in COMMAND_MAP.items():
             if any(kw in lower for kw in keywords):

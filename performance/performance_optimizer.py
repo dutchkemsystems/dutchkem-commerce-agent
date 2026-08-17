@@ -63,8 +63,6 @@ class PerformanceOptimizer:
     def _max_nesting(self, code: str) -> int:
         depth = 0
         max_depth = 0
-        tokens = re.split(r"(\b(?:for|while|if|elif|else|def|with|try|except|finally)\b)", code)
-        indent = 0
         in_indent = None
         for line in code.splitlines():
             stripped = line.strip()

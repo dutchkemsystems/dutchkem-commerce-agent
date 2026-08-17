@@ -78,6 +78,7 @@ function Build-EnvVars([hashtable]$dotenv) {
         MEMORY_PATH               = "/opt/render/project/src/data/memory"
         KNOWLEDGE_PATH            = "/opt/render/project/src/data/knowledge"
         EVOLUTION_LOG_PATH        = "/opt/render/project/src/data/evolution.jsonl"
+        GENERATED_PATH            = "/opt/render/project/src/generated"
         OPENAI_BASE_URL           = "https://api.openai.com/v1"
         OPENAI_MODEL              = "gpt-4o-mini"
         ANTHROPIC_BASE_URL        = "https://api.anthropic.com"
@@ -90,7 +91,8 @@ function Build-EnvVars([hashtable]$dotenv) {
         "GROQ_API_KEY", "GROQ_API_KEYS", "OPENROUTER_API_KEY", "OPENROUTER_API_KEYS",
         "DEEPSEEK_API_KEY", "DEEPSEEK_API_KEYS", "DASHSCOPE_API_KEY", "DASHSCOPE_API_KEYS",
         "MISTRAL_API_KEY", "MISTRAL_API_KEYS", "GITHUB_TOKEN", "GITHUB_TOKENS",
-        "OPENAI_API_KEY", "OPENAI_API_KEYS", "ANTHROPIC_API_KEY", "ANTHROPIC_API_KEYS"
+        "OPENAI_API_KEY", "OPENAI_API_KEYS", "ANTHROPIC_API_KEY", "ANTHROPIC_API_KEYS",
+        "API_KEY"
     )
     foreach ($k in $secretKeys) { if (-not $vars.ContainsKey($k)) { $vars[$k] = "" } }
 

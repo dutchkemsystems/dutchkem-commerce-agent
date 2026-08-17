@@ -27,6 +27,14 @@ def create_app(model=None):
         result = model.process_request(command)
         return json.dumps(result, indent=2, default=str)
 
+    def handle_build(prompt, project_name):
+        result = model.build_project(prompt, project=project_name)
+        return json.dumps(result, indent=2, default=str)
+
+    def handle_workflow(name, prompt):
+        result = model.run_workflow(name, prompt)
+        return json.dumps(result, indent=2, default=str)
+
     def handle_model(provider, model_name):
         status = model.set_llm(provider, model_name)
         return json.dumps(status, indent=2, default=str)
@@ -64,6 +72,37 @@ def create_app(model=None):
             run = gr.Button("Run")
             out = gr.Textbox(label="Result", lines=20)
             run.click(handle_demo, [req_type, prompt], out)
+
+        with gr.Tab("Build"):
+            gr.Markdown(
+                "Generate a **real project** and write it to `generated/` — the "
+                "Coder agent returns a JSON file map that is scaffolded to disk. "
+                "The main file is **not** executed automatically: set "
+                "`RUN_GENERATED_CODE=true` (or pass `run_code: true` to the API) "
+                "to run it in the hardened sandbox."
+            )
+            with gr.Row():
+                build_prompt = gr.Textbox(
+                    label="App description",
+                    placeholder="Build a REST API with FastAPI, SQLite and JWT auth...",
+                    scale=3,
+                )
+                build_name = gr.Textbox(label="Project name (optional)", scale=1)
+            build_run = gr.Button("Generate project")
+            build_out = gr.Textbox(label="Result", lines=20)
+            build_run.click(handle_build, [build_prompt, build_name], build_out)
+
+        with gr.Tab("Workflow"):
+            with gr.Row():
+                wf_name = gr.Dropdown(
+                    choices=["build-pipeline", "generate"],
+                    value="build-pipeline",
+                    label="Workflow",
+                )
+                wf_prompt = gr.Textbox(label="Task description", scale=3)
+            wf_run = gr.Button("Run workflow")
+            wf_out = gr.Textbox(label="Result", lines=20)
+            wf_run.click(handle_workflow, [wf_name, wf_prompt], wf_out)
 
         with gr.Tab("Model"):
             gr.Markdown(

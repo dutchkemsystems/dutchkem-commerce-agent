@@ -1,23 +1,33 @@
 """Fleet Commander — orchestration engine for parallel multi-agent execution."""
 
+import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, List, Optional
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
 
 class FleetCommander:
-    """Registers agents, decomposes tasks, and executes them in parallel."""
+    """Registers agents, decomposes tasks, and executes them in parallel.
 
-    def __init__(self, max_workers: int = 8):
-        self.agents: Dict[str, Any] = {}
+    Every lifecycle event is recorded to an in-memory audit log and — when
+    ``audit_path`` is given — appended to a JSONL file so orchestration history
+    survives restarts.
+    """
+
+    def __init__(self, max_workers: int = 8, audit_path: str = None):
+        self.agents: dict[str, Any] = {}
         self.max_workers = max_workers
-        self.audit_log: List[Dict[str, Any]] = []
+        self.audit_log: list[dict[str, Any]] = []
+        self.audit_path = Path(audit_path) if audit_path else None
+        if self.audit_path:
+            self.audit_path.parent.mkdir(parents=True, exist_ok=True)
 
     def register_agent(self, name: str, agent: Any):
         self.agents[name] = agent
         self._log("agent_registered", {"name": name})
 
-    def execute_task(self, task_description: str) -> Dict:
+    def execute_task(self, task_description: str) -> dict:
         plan = self._decompose(task_description)
         assignments = self._assign(plan)
         results = self._execute_parallel(assignments)
@@ -25,7 +35,7 @@ class FleetCommander:
         final = self._finalize(merged)
         return final
 
-    def _decompose(self, task_description: str) -> List[Dict]:
+    def _decompose(self, task_description: str) -> list[dict]:
         architect = self.agents.get("architect")
         if architect is not None and hasattr(architect, "plan"):
             plan = architect.plan(task_description)
@@ -36,15 +46,15 @@ class FleetCommander:
             return [{"step": 1, "agent": "coder", "action": sub_tasks}]
         return [{"step": 1, "agent": "coder", "action": task_description}]
 
-    def _assign(self, plan: List[Dict]) -> Dict[str, List[Dict]]:
-        assignments: Dict[str, List[Dict]] = {}
+    def _assign(self, plan: list[dict]) -> dict[str, list[dict]]:
+        assignments: dict[str, list[dict]] = {}
         for step in plan:
             agent_name = step.get("agent", "coder")
             assignments.setdefault(agent_name, []).append(step)
         return assignments
 
-    def _execute_parallel(self, assignments: Dict[str, List[Dict]]) -> Dict[str, List]:
-        results: Dict[str, List] = {}
+    def _execute_parallel(self, assignments: dict[str, list[dict]]) -> dict[str, list]:
+        results: dict[str, list] = {}
         with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
             futures = {}
             for agent_name, tasks in assignments.items():
@@ -62,15 +72,15 @@ class FleetCommander:
         self._log("parallel_execution", {k: len(v) for k, v in results.items()})
         return results
 
-    def _merge(self, results: Dict[str, List], task: str) -> Dict:
+    def _merge(self, results: dict[str, list], task: str) -> dict:
         return {
             "task": task,
             "agents_used": list(results.keys()),
             "agent_results": results,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
 
-    def _finalize(self, merged: Dict) -> Dict:
+    def _finalize(self, merged: dict) -> dict:
         combined = []
         for agent_name, items in merged["agent_results"].items():
             for item in items:
@@ -83,14 +93,23 @@ class FleetCommander:
         return merged
 
     @staticmethod
-    def _tasks_to_prompt(tasks: List[Dict]) -> str:
+    def _tasks_to_prompt(tasks: list[dict]) -> str:
         lines = []
         for t in tasks:
             action = t.get("action", t.get("description", ""))
             lines.append(f"- {action}")
         return "Execute the following assigned tasks:\n" + "\n".join(lines)
 
-    def _log(self, event: str, payload: Dict):
-        self.audit_log.append(
-            {"event": event, "payload": payload, "timestamp": datetime.now(timezone.utc).isoformat()}
-        )
+    def _log(self, event: str, payload: dict):
+        entry = {
+            "event": event,
+            "payload": payload,
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
+        self.audit_log.append(entry)
+        if self.audit_path:
+            try:
+                with open(self.audit_path, "a", encoding="utf-8") as fh:
+                    fh.write(json.dumps(entry) + "\n")
+            except OSError:
+                pass

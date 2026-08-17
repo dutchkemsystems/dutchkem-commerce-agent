@@ -1,7 +1,7 @@
 """Architect Agent — structured design output for the fleet."""
 
-from agents.system_architect import SYSTEM_PROMPT
 from agents.base_agent import BaseAgent
+from agents.system_architect import SYSTEM_PROMPT
 
 
 class ArchitectAgent(BaseAgent):

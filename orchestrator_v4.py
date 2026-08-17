@@ -14,8 +14,11 @@ Usage:
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
+
+from logging_setup import get_logger, log_exception
 
 for _stream in (sys.stdout, sys.stderr):
     try:
@@ -23,37 +26,38 @@ for _stream in (sys.stdout, sys.stderr):
     except (AttributeError, ValueError):
         pass
 
+log = get_logger("orchestrator")
+
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-from agents.system_architect import SystemArchitectAgent
 from agents.architect_agent import ArchitectAgent
-from agents.coder_agent import CoderAgent
-from agents.reviewer_agent import ReviewerAgent
-from agents.qa_agent import QAAgent
-from agents.devops_agent import DevOpsAgent
-from agents.security_agent import SecurityComplianceAgent
-from agents.mobile_agent import MobileAgent
 from agents.cloud_agent import CloudAgent
-from agents.os_kernel_agent import OSKernelAgent
-from agents.game_developer_agent import GameDeveloperAgent
+from agents.coder_agent import CoderAgent
 from agents.design_agent import DesignAgent
+from agents.devops_agent import DevOpsAgent
 from agents.fleet_commander import FleetCommanderAgent
-
-from fleet.fleet_commander import FleetCommander
-from sdlc.sdlc_manager import SDLCManager
-from security.security_framework import SecurityFramework
-from performance.performance_optimizer import PerformanceOptimizer
-from memory.persistent_memory import PersistentMemory
-from execution.sandbox_enterprise import EnterpriseSandbox
-from tools.browser import BuiltInBrowser
+from agents.game_developer_agent import GameDeveloperAgent
+from agents.llm_client import PROVIDERS, _normalize_provider
+from agents.mobile_agent import MobileAgent
+from agents.os_kernel_agent import OSKernelAgent
+from agents.qa_agent import QAAgent
+from agents.reviewer_agent import ReviewerAgent
+from agents.security_agent import SecurityComplianceAgent
+from agents.system_architect import SystemArchitectAgent
 from automation.workflows import WorkflowEngine
 from ecosystem.plugin_manager import PluginManager
 from enterprise.team_features import TeamManager
 from evolution.self_improvement import SelfImprovementEvolution
+from execution.project_scaffolder import ProjectScaffolder
+from execution.sandbox_enterprise import EnterpriseSandbox
+from fleet.fleet_commander import FleetCommander
+from memory.persistent_memory import PersistentMemory
+from performance.performance_optimizer import PerformanceOptimizer
+from sdlc.sdlc_manager import SDLCManager
+from security.security_framework import SecurityFramework
+from tools.browser import BuiltInBrowser
 from voice.voice_assistant import VoiceAssistant
-
-from agents.llm_client import PROVIDER_ORDER, PROVIDERS, _normalize_provider
 
 
 class DutchkemModel4:
@@ -81,19 +85,12 @@ class DutchkemModel4:
         self.sdlc_manager = SDLCManager()
         self.security_framework = SecurityFramework()
         self.performance_optimizer = PerformanceOptimizer()
-        self.fleet = FleetCommander(max_workers=8)
+        self.fleet = FleetCommander(max_workers=8, audit_path=os.getenv(
+            "FLEET_AUDIT_PATH", str(ROOT / "data" / "fleet_audit.jsonl")))
 
         self.memory = PersistentMemory("dutchkem_global", path=os.getenv("MEMORY_PATH"))
-        self.browser = BuiltInBrowser()
         self.workflows = WorkflowEngine()
-        self.plugins = PluginManager()
-        self.sandbox = EnterpriseSandbox(
-            timeout=int(os.getenv("SANDBOX_TIMEOUT", "60")),
-            allow_network=os.getenv("SANDBOX_ALLOW_NETWORK", "false").lower() == "true",
-        )
-        self.team_manager = TeamManager()
-        self.evolution = SelfImprovementEvolution(log_path=os.getenv("EVOLUTION_LOG_PATH"))
-        self.voice = VoiceAssistant()
+        self._lazy_cache = {}
 
         self.agents = {
             "architect": self.architect,
@@ -113,14 +110,70 @@ class DutchkemModel4:
         for name, agent in self.agents.items():
             self.fleet.register_agent(name, agent)
 
+        self.sdlc_manager.agents = {
+            phase: self.agents[agent_name]
+            for phase, agent_name in SDLCManager.PHASE_AGENT_DEFAULT.items()
+            if agent_name in self.agents
+        }
+        self._register_workflows()
+
         self.current_project = None
         self.is_running = True
         print(f"✅ Dutchkem Model 4.0 initialized (v{self.VERSION})")
         print(f"📊 Agents registered: {len(self.agents)}")
 
+    def _lazy(self, key: str, factory):
+        """Memoize expensive subsystem construction until first use."""
+        cached = self._lazy_cache.get(key)
+        if cached is None:
+            cached = factory()
+            self._lazy_cache[key] = cached
+        return cached
+
+    @property
+    def browser(self):
+        return self._lazy("browser", lambda: BuiltInBrowser())
+
+    @property
+    def plugins(self):
+        def _factory():
+            mgr = PluginManager()
+            mgr.load_all()
+            return mgr
+        return self._lazy("plugins", _factory)
+
+    @property
+    def scaffolder(self):
+        return self._lazy("scaffolder",
+                          lambda: ProjectScaffolder(base_dir=os.getenv("GENERATED_PATH")))
+
+    @property
+    def sandbox(self):
+        return self._lazy(
+            "sandbox",
+            lambda: EnterpriseSandbox(
+                timeout=int(os.getenv("SANDBOX_TIMEOUT", "60")),
+                allow_network=os.getenv("SANDBOX_ALLOW_NETWORK", "false").lower() == "true",
+                max_memory_mb=int(os.getenv("SANDBOX_MEMORY_MB", "256")),
+                max_cpu_seconds=int(os.getenv("SANDBOX_CPU_SECONDS", "30")),
+            ),
+        )
+
+    @property
+    def team_manager(self):
+        return self._lazy("team_manager", lambda: TeamManager())
+
+    @property
+    def evolution(self):
+        return self._lazy("evolution",
+                          lambda: SelfImprovementEvolution(log_path=os.getenv("EVOLUTION_LOG_PATH")))
+
+    @property
+    def voice(self):
+        return self._lazy("voice", lambda: VoiceAssistant())
+
     @staticmethod
     def _has_keyword(text: str, keyword: str) -> bool:
-        import re
         return re.search(r"\b" + re.escape(keyword) + r"\b", text) is not None
 
     def llm_status(self) -> dict:
@@ -130,7 +183,7 @@ class DutchkemModel4:
     def set_llm(self, provider: str = None, model: str = None) -> dict:
         """Switch every agent to another provider and/or model at runtime."""
         result = self.architect.llm.set_model(provider, model)
-        for name, agent in self.agents.items():
+        for agent in self.agents.values():
             agent.llm.set_model(result["provider"], result["model"])
             agent.model = agent.llm.model
         return result
@@ -165,7 +218,139 @@ class DutchkemModel4:
         if any(self._has_keyword(lower, k) for k in
                ["execute", "run this code", "test code", "run python"]):
             return "execute"
+        if any(self._has_keyword(lower, k) for k in
+               ["build", "scaffold", "generate project", "create app",
+                "create an app", "make an app", "build an app",
+                "project structure", "write the project"]):
+            return "build"
+        if any(self._has_keyword(lower, k) for k in
+               ["plugin", "plugins"]):
+            return "plugin"
+        if any(self._has_keyword(lower, k) for k in
+               ["workflow", "pipeline"]):
+            return "workflow"
         return "general"
+
+    @staticmethod
+    def _slug(name: str) -> str:
+        return re.sub(r"[^A-Za-z0-9._-]+", "_", (name or "").strip())
+
+    @staticmethod
+    def _strip_command(text: str) -> str:
+        """Strip a leading '/command' prefix from an input string."""
+        m = re.match(r"^/(\w+)\s*(.*)$", text.strip(), re.S)
+        return m.group(2).strip() if m else text.strip()
+
+    def _register_workflows(self):
+        """Register default reusable multi-step workflows."""
+        def _prompt(context):
+            return (context or {}).get("description", "")
+        self.workflows.register("build-pipeline", [
+            {"name": "architecture",
+             "action": lambda **kw: self.architect.generate(_prompt(kw.get("context"))),
+             "description": "System architecture design"},
+            {"name": "implementation",
+             "action": lambda **kw: self.coder.generate(_prompt(kw.get("context"))),
+             "description": "Code implementation"},
+            {"name": "review",
+             "action": lambda **kw: self.reviewer.generate(_prompt(kw.get("context"))),
+             "description": "Implementation review"},
+            {"name": "verification",
+             "action": lambda **kw: self.qa.generate(_prompt(kw.get("context"))),
+             "description": "QA verification"},
+        ])
+        self.workflows.register("generate", [
+            {"name": "plan",
+             "action": lambda **kw: self.planner.generate(_prompt(kw.get("context"))),
+             "description": "Technical planning"},
+            {"name": "code",
+             "action": lambda **kw: self.coder.generate(_prompt(kw.get("context"))),
+             "description": "Code generation"},
+        ])
+
+    def build_project(self, description: str, project: str = None,
+                      run_code=None) -> dict:
+        """Generate a runnable project from a description and write it to disk.
+
+        Asks the Coder agent for a JSON ``{"files": {...}}`` map, scaffolds it
+        into ``generated/<project>/`` and optionally runs the main file in the
+        sandbox. Falls back to a deterministic starter project if the LLM
+        output is not parseable (e.g. offline mode).
+
+        ``run_code`` is opt-in: when left as ``None`` it is read from the
+        ``RUN_GENERATED_CODE`` env var (default ``false``) so generated code is
+        never executed implicitly.
+        """
+        name = project or self._slug(description)[:40] or "untitled"
+        spec = self.coder.generate(
+            "You are scaffolding a complete, runnable project. "
+            "Respond with ONLY a single JSON object of this exact shape:\n"
+            '{"files": {"relative/path": "file contents", ...}}\n'
+            "Include every file needed to build and run it (source code, "
+            "requirements, README, tests). No prose, no markdown fences.\n\n"
+            f"Request: {description}"
+        )
+        manifest = self.scaffolder.scaffold_from_json(spec, name)
+        note = None
+        if not manifest.get("ok"):
+            manifest = self.scaffolder.scaffold(
+                name, self.scaffolder.default_project(description, name)
+            )
+            note = "LLM output was not parseable as a file map; wrote a starter project."
+        result = {
+            "ok": manifest.get("ok", False),
+            "project": manifest.get("project"),
+            "root": manifest.get("root"),
+            "files": manifest.get("files", []),
+            "file_count": manifest.get("file_count", 0),
+            "errors": manifest.get("errors", []),
+        }
+        if note:
+            result["note"] = note
+            result["fallback"] = True
+        should_run = (
+            run_code if run_code is not None
+            else os.getenv("RUN_GENERATED_CODE", "false").strip().lower() in ("1", "true", "yes")
+        )
+        if should_run and manifest.get("ok"):
+            result["execution"] = self._run_main_file(manifest)
+        self.evolution.record(
+            description, "build", 1.0 if manifest.get("ok") else 0.5,
+            note=f"scaffolded {name}",
+        )
+        return result
+
+    def _run_main_file(self, manifest: dict) -> dict:
+        root = Path(manifest.get("root", ""))
+        if not root.exists():
+            return {"ok": False, "error": "project root missing"}
+        candidates = [f for f in manifest.get("files", [])
+                      if f.rsplit("/", 1)[-1] in ("app.py", "main.py", "index.py")]
+        if not candidates:
+            return {"ok": False, "error": "no main file (app.py/main.py/index.py)"}
+        try:
+            source = (root / candidates[0]).read_text(encoding="utf-8")
+        except OSError as exc:
+            return {"ok": False, "error": str(exc)}
+        return self.sandbox.execute_python(source)
+
+    def run_workflow(self, name: str, description: str = "") -> dict:
+        """Run a named workflow with a description as its run-time context."""
+        return self.workflows.run(name, {"description": description})
+
+    def plugin_run(self, name: str, *args, **kwargs) -> dict:
+        """Load and invoke a plugin's ``run()`` function safely."""
+        try:
+            module = self.plugins.load(name)
+        except FileNotFoundError as exc:
+            return {"ok": False, "error": str(exc)}
+        fn = getattr(module, "run", None)
+        if not callable(fn):
+            return {"ok": False, "error": f"plugin '{name}' has no run() function"}
+        try:
+            return {"ok": True, "plugin": name, "result": fn(*args, **kwargs)}
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "plugin": name, "error": str(exc)}
 
     def process_request(self, user_input: str, context: str = None) -> dict:
         """Route a request to the appropriate agent or subsystem."""
@@ -173,6 +358,7 @@ class DutchkemModel4:
         try:
             result = self._dispatch(intent, user_input, context)
         except Exception as exc:  # noqa: BLE001
+            log_exception(log, exc, f"dispatching intent='{intent}'")
             result = {"error": str(exc)}
         result["intent"] = intent
         self.memory.add(user_input, metadata={"intent": intent}, namespace="requests")
@@ -211,14 +397,33 @@ class DutchkemModel4:
         if intent == "fleet":
             return {"agent": "fleet", "execution": self.fleet.execute_task(user_input)}
         if intent == "execute":
-            import re as _re
-            code = _re.sub(
+            code = re.sub(
                 r"^(execute|run this code|run python|run|python)\b\s*",
                 "",
                 user_input.strip(),
-                flags=_re.IGNORECASE,
+                flags=re.IGNORECASE,
             )
             return {"agent": "sandbox", "execution": self.sandbox.execute_python(code)}
+        if intent == "build":
+            text = self._strip_command(user_input)
+            return {"agent": "build", "execution": self.build_project(text)}
+        if intent == "plugin":
+            text = re.sub(r"^plugin(s)?\b", "", self._strip_command(user_input), flags=re.I).strip()
+            name, _, arg = text.partition(" ")
+            if not name:
+                return {"agent": "plugin",
+                        "plugins": self.plugins.discover(),
+                        "installed": self.plugins.installed()}
+            return {"agent": "plugin",
+                    "execution": self.plugin_run(name.strip(), (arg.strip() or None))}
+        if intent == "workflow":
+            text = self._strip_command(user_input)
+            parts = text.split(None, 1)
+            if parts and parts[0] in self.workflows.workflows:
+                name, desc = parts[0], (parts[1] if len(parts) > 1 else "")
+            else:
+                name, desc = "build-pipeline", text
+            return {"agent": "workflow", "execution": self.run_workflow(name, desc)}
         remembered = self.memory.recall(user_input)
         return {
             "agent": "fleet",
@@ -233,7 +438,8 @@ class DutchkemModel4:
         print("🧠 Dutchkem Model 4.0 — CLI Interface")
         print("=" * 60)
         print("Commands: /architect /design /os_kernel /game /security")
-        print("          /performance /sdlc /fleet /execute /model /help /exit")
+        print("          /performance /sdlc /fleet /build /workflow /plugins")
+        print("          /projects /execute /model /help /exit")
         print("          e.g. /model deepseek  or  /model groq llama-3.3-70b-versatile")
         print("=" * 60 + "\n")
         while self.is_running:
@@ -252,6 +458,21 @@ class DutchkemModel4:
                     continue
                 if line.startswith("/model "):
                     self._set_model_command(line[len("/model "):].strip())
+                    continue
+                if line.startswith("/projects"):
+                    print(json.dumps(self.scaffolder.list(), indent=2, default=str))
+                    continue
+                if line.startswith("/plugin "):
+                    rest = line[len("/plugin "):].strip()
+                    name, _, arg = rest.partition(" ")
+                    print(json.dumps(self.plugin_run(name.strip(), (arg.strip() or None)),
+                                     indent=2, default=str))
+                    continue
+                if line.startswith("/workflow "):
+                    parts = line[len("/workflow "):].split(None, 1)
+                    name = parts[0] if parts else "build-pipeline"
+                    desc = parts[1] if len(parts) > 1 else ""
+                    print(json.dumps(self.run_workflow(name, desc), indent=2, default=str))
                     continue
                 if line.startswith("/"):
                     text = line[1:]
@@ -309,6 +530,10 @@ class DutchkemModel4:
         print("  /performance— performance & scalability analysis")
         print("  /sdlc       — full software development lifecycle")
         print("  /fleet      — multi-agent orchestration")
+        print("  /build      — generate a project and write it to generated/")
+        print("  /workflow   — run a workflow, e.g. /workflow build-pipeline <desc>")
+        print("  /plugins    — list plugins;  /plugin <name> [arg] to run one")
+        print("  /projects   — list generated projects")
         print("  /execute    — run Python in the sandbox")
         print("  /model      — show providers;  /model <provider>[ /model] to switch")
         print("  /voice      — voice command mode")
@@ -327,19 +552,44 @@ class DutchkemModel4:
         ))
 
     def run_web(self):
+        import socket as _socket
         import time as _time
+
         from web.app import create_app
         app = create_app(self)
         host = os.getenv("WEB_HOST", "0.0.0.0")
         port = int(os.getenv("WEB_PORT") or os.getenv("PORT") or "5000")
-        print(f"🌐 Starting web interface at http://localhost:{port}")
+
+        def _port_free(host: str, port: int) -> bool:
+            try:
+                with _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM) as sock:
+                    sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+                    sock.bind((host, port))
+                return True
+            except OSError:
+                return False
+
+        chosen = port
+        if not _port_free(host, port):
+            for candidate in range(port + 1, port + 21):
+                if _port_free(host, candidate):
+                    chosen = candidate
+                    break
+            if chosen == port:
+                raise RuntimeError(
+                    f"Port {port} is in use and no free port found in range "
+                    f"{port}-{port + 20}. Set WEB_PORT/PORT to a free port."
+                )
+            print(f"⚠️  Port {port} is in use — starting on port {chosen} instead.")
+        print(f"🌐 Starting web interface at http://localhost:{chosen}")
         app.launch(
             server_name=host,
-            server_port=port,
+            server_port=chosen,
             prevent_thread_lock=True,
             quiet=True,
         )
-        print(f"✅ Gradio UI listening on {host}:{port}")
+        print(f"✅ Gradio UI listening on {host}:{chosen}")
+        print(f"   Open http://localhost:{chosen} in your browser")
         try:
             while True:
                 _time.sleep(3600)
@@ -352,6 +602,8 @@ class DutchkemModel4:
 
 
 def main():
+    from logging_setup import setup_logging
+    setup_logging()
     args = sys.argv[1:]
     model = DutchkemModel4()
     provider = None

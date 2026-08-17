@@ -11,18 +11,21 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from agents.qa_agent import QAAgent
 from agents.design_agent import DesignAgent
 from agents.fleet_commander import FleetCommanderAgent
+from agents.llm_client import (
+    PROVIDERS,
+    LLMClient,
+    _parse_key_pool,
+    load_config,
+)
+from agents.qa_agent import QAAgent
+from fleet.fleet_commander import FleetCommander
 from memory.persistent_memory import PersistentMemory
-from security.security_framework import SecurityFramework
 from performance.performance_optimizer import PerformanceOptimizer
 from sdlc.sdlc_manager import SDLCManager
-from fleet.fleet_commander import FleetCommander
+from security.security_framework import SecurityFramework
 from voice.voice_assistant import VoiceAssistant
-from agents.llm_client import (
-    LLMClient, load_config, _parse_key_pool, PROVIDERS, PROVIDER_ORDER,
-)
 
 
 def _no_keys_config() -> dict:

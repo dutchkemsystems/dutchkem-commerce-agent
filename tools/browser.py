@@ -1,6 +1,5 @@
 """Built-in browser tool — fetches and extracts web content."""
 
-from typing import List, Dict, Optional
 
 try:
     import requests
@@ -14,7 +13,7 @@ class BuiltInBrowser:
     def __init__(self, timeout: int = 20):
         self.timeout = timeout
 
-    def fetch(self, url: str) -> Dict:
+    def fetch(self, url: str) -> dict:
         """Fetch a URL and return status, text, and headers."""
         if requests is None:
             return {"ok": False, "error": "requests library not installed"}
@@ -29,7 +28,7 @@ class BuiltInBrowser:
                 "content_type": resp.headers.get("Content-Type", ""),
                 "text": text,
             }
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             return {"ok": False, "error": str(exc)}
 
     def extract_text(self, url: str, max_chars: int = 20000) -> str:

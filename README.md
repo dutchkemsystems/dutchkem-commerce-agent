@@ -73,6 +73,13 @@ OLLAMA_AUTO_FALLBACK=true         # use Ollama when cloud keys fail or are absen
 MODEL_TEMPERATURE=0.2
 MAX_ATTEMPT_SECONDS=30            # global budget for key rotation/retries
 MULTI_PROVIDER_FALLBACK=true      # try every configured provider before Ollama
+
+# Security / ops
+RUN_GENERATED_CODE=false          # /build never executes generated code implicitly
+API_KEY=                          # bearer token for the REST API (leave empty = open)
+API_RATE_LIMIT=120                # max /api/v1 requests per client per window
+LOG_LEVEL=INFO                    # dutchkem.* logger level
+FLEET_AUDIT_PATH=./data/fleet_audit.jsonl   # JSONL audit trail for fleet runs
 ```
 
 Works with OpenAI, OpenRouter, Groq, Together, vLLM, LM Studio, Ollama, and

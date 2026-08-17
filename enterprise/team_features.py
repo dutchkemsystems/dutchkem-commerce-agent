@@ -1,13 +1,12 @@
 """Team features — roles, projects, and shared memory for enterprise teams."""
 
-from typing import Dict, List, Optional
 
 
 class TeamMember:
     def __init__(self, name: str, role: str):
         self.name = name
         self.role = role
-        self.permissions: List[str] = []
+        self.permissions: list[str] = []
 
     def to_dict(self) -> dict:
         return {"name": self.name, "role": self.role, "permissions": self.permissions}
@@ -19,8 +18,8 @@ class TeamManager:
     DEFAULT_ROLES = ["owner", "admin", "developer", "viewer"]
 
     def __init__(self):
-        self.members: Dict[str, TeamMember] = {}
-        self.projects: Dict[str, Dict] = {}
+        self.members: dict[str, TeamMember] = {}
+        self.projects: dict[str, dict] = {}
 
     def add_member(self, name: str, role: str = "developer") -> dict:
         if role not in self.DEFAULT_ROLES:
@@ -31,7 +30,7 @@ class TeamManager:
     def remove_member(self, name: str):
         return self.members.pop(name, None) is not None
 
-    def list_members(self) -> List[dict]:
+    def list_members(self) -> list[dict]:
         return [m.to_dict() for m in self.members.values()]
 
     def create_project(self, name: str, owner: str) -> dict:

@@ -109,6 +109,51 @@ def build_server():
         return json.dumps(model.sandbox.execute_python(code), indent=2)
 
     @mcp.tool()
+    def build_project(description: str, project: str = None) -> str:
+        """Generate a runnable project and write it to disk under generated/.
+
+        Args:
+            description: what to build (e.g. 'a REST API with FastAPI and auth')
+            project: optional directory name for the project
+        """
+        return json.dumps(model.build_project(description, project=project), indent=2)
+
+    @mcp.tool()
+    def list_projects(project: str = None) -> str:
+        """List generated projects (or all files within one project).
+
+        Args:
+            project: optional project name to inspect
+        """
+        return json.dumps(model.scaffolder.list(project), indent=2)
+
+    @mcp.tool()
+    def run_workflow(name: str, description: str = "") -> str:
+        """Run a named multi-step workflow.
+
+        Args:
+            name: workflow name (e.g. build-pipeline, generate)
+            description: the task description used as workflow context
+        """
+        return json.dumps(model.run_workflow(name, description), indent=2)
+
+    @mcp.tool()
+    def plugin_run(name: str, arg: str = None) -> str:
+        """Invoke a plugin's run() function.
+
+        Args:
+            name: plugin name (see list_plugins)
+            arg: optional single argument passed to the plugin
+        """
+        return json.dumps(model.plugin_run(name, arg), indent=2)
+
+    @mcp.tool()
+    def list_plugins() -> str:
+        """List available and loaded plugins."""
+        return json.dumps({"plugins": model.plugins.discover(),
+                           "installed": model.plugins.installed()}, indent=2)
+
+    @mcp.tool()
     def memory_store(content: str, namespace: str = "default") -> str:
         """Store a fact in persistent memory.
 

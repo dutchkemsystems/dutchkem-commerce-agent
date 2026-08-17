@@ -3,7 +3,6 @@
 import json
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
 
 
 class SelfImprovementEvolution:
@@ -27,7 +26,7 @@ class SelfImprovementEvolution:
         self._entries.append(entry)
         self._append(entry)
 
-    def _append(self, entry: Dict):
+    def _append(self, entry: dict):
         with open(self.log_path, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry) + "\n")
 
@@ -35,7 +34,7 @@ class SelfImprovementEvolution:
         if not self.log_path.exists():
             return []
         entries = []
-        with open(self.log_path, "r", encoding="utf-8") as fh:
+        with open(self.log_path, encoding="utf-8") as fh:
             for line in fh:
                 line = line.strip()
                 if line:

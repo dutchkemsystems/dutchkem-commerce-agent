@@ -42,6 +42,16 @@ services:
         value: "60"
       - key: SANDBOX_ALLOW_NETWORK
         value: "false"
+      - key: SANDBOX_MEMORY_MB
+        value: "256"
+      - key: SANDBOX_CPU_SECONDS
+        value: "30"
+      # Never execute generated code implicitly in production.
+      - key: RUN_GENERATED_CODE
+        value: "false"
+      # REST API auth — set this in the Render dashboard as a secret.
+      - key: API_KEY
+        sync: false
       # Persistent paths (mount the disk above)
       - key: MEMORY_PATH
         value: /opt/render/project/src/data/memory
@@ -49,6 +59,8 @@ services:
         value: /opt/render/project/src/data/knowledge
       - key: EVOLUTION_LOG_PATH
         value: /opt/render/project/src/data/evolution.jsonl
+      - key: GENERATED_PATH
+        value: /opt/render/project/src/generated
       # Provider endpoint defaults (overridable per-provider)
       - key: OPENAI_BASE_URL
         value: https://api.openai.com/v1
@@ -85,4 +97,7 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: ANTHROPIC_API_KEYS
+        sync: false
+      # Optional bearer token for the REST API — set to protect /api/v1/*
+      - key: API_KEY
         sync: false

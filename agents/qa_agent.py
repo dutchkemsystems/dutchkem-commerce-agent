@@ -1,6 +1,7 @@
 """QA & Testing Agent — tests code, finds bugs, ensures quality."""
 
 import re
+
 from agents.base_agent import BaseAgent
 
 SYSTEM_PROMPT = """You are the QA Agent, an expert in quality assurance.

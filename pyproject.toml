@@ -1,0 +1,17 @@
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = ["venv", ".venv", "env", "__pycache__", "data", "generated"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "BLE"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# These files deliberately insert ROOT into sys.path before importing project
+# modules, so module-level imports after executable statements are expected.
+"orchestrator_v4.py" = ["E402"]
+"scripts/init_knowledge.py" = ["E402"]
+"tests/*" = ["E402"]
+"web/api.py" = ["E402"]
+"web/mcp_server.py" = ["E402"]
