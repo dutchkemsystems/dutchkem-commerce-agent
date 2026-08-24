@@ -1,8 +1,7 @@
-# Render Blueprint — deploy Dutchkem Model 4.0 in one click.
+# Render Blueprint — deploy Dutchkem Model 4.0 + WhatsApp Commerce Agent.
 # Connect this repo to Render, or use:  https://render.com/blueprints/<repo>
 #
-# IMPORTANT: Render injects PORT for the app. Do NOT set WEB_PORT here — the
-# code already prefers `PORT` when WEB_PORT is absent (orchestrator_v4.py:333).
+# IMPORTANT: Render injects PORT for the app. Do NOT set WEB_PORT here.
 services:
   - type: web
     name: dutchkem-model-4.0
@@ -99,5 +98,56 @@ services:
       - key: ANTHROPIC_API_KEYS
         sync: false
       # Optional bearer token for the REST API — set to protect /api/v1/*
-      - key: API_KEY
+
+  # ── WhatsApp Commerce Agent ─────────────────────────────────────
+  - type: web
+    name: whatsapp-commerce-agent
+    runtime: python
+    plan: free
+    autoDeploy: true
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py --api-only
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.0"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: dutchkem-commerce-db
+          property: connectionString
+      - key: COMMERCE_PORT
+        value: "10000"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: WHATSAPP_PROVIDER
+        value: mock
+      - key: STRIPE_SECRET_KEY
         sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: FEDEX_API_KEY
+        sync: false
+      - key: FEDEX_SECRET_KEY
+        sync: false
+      - key: FEDEX_ACCOUNT_NUMBER
+        sync: false
+      - key: FEDEX_METER_NUMBER
+        sync: false
+      - key: UPS_API_KEY
+        sync: false
+      - key: UPS_USERNAME
+        sync: false
+      - key: UPS_PASSWORD
+        sync: false
+      - key: DEFAULT_SHIPPING_PROVIDER
+        value: fedex
+      - key: MODEL_PROVIDER
+        value: openrouter
+      - key: OPENROUTER_API_KEY
+        sync: false
+
+databases:
+  - name: dutchkem-commerce-db
+    plan: free
+    databaseName: commerce
+    user: commerce
