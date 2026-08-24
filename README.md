@@ -1,10 +1,23 @@
 # 🧠 Dutchkem Model 4.0 — The Ultimate AI Build System
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/dutchkemsystems/dutchkem-commerce-agent)
+
 A self-improving, multi-agent AI build system with **13 specialized agents** and
 full-stack tooling: architecture generation, code generation, OS/kernel
 development, game development, design/UI-UX, QA, security & compliance, full
 SDLC, performance analysis, sandboxed execution, persistent memory, plugins,
 voice commands, and a web/REST/CLI interface.
+
+## 🛍️ NEW: WhatsApp AI Commerce Agent
+
+Fully autonomous e-commerce system with:
+- **Customer Support** — 24/7 AI-powered support with sentiment analysis
+- **E-commerce** — Product catalog, cart, orders, recommendations
+- **Payments** — Stripe integration with webhooks and refunds
+- **Shipping** — FedEx/UPS with rate shopping and tracking
+- **Admin Dashboard** — Complete business management API
+
+→ See [DEPLOY.md](DEPLOY.md) for deployment instructions
 
 ## Features
 
