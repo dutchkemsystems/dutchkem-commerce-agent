@@ -1,11 +1,12 @@
 services:
+  # ── Core AI System ──────────────────────────────────────────────
   dutchkem:
     build: .
     image: dutchkem-model-4.0
     container_name: dutchkem
     ports:
       - "5000:5000"   # Gradio web UI
-      - "8000:8000"   # REST API (start separately with `python -m web.api`)
+      - "8000:8000"   # Original REST API
     env_file:
       - .env
     environment:
@@ -22,14 +23,96 @@ services:
     ports:
       - "11434:11434"
     restart: unless-stopped
-    # Pull a local fallback model on first start:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >
         ollama serve &
-        sleep 5 &&
-        ollama pull qwen3-coder &&
+        for i in 1 2 3 4 5 6 7 8 9 10; do
+          ollama pull qwen3-coder 2>/dev/null && break;
+          echo "Waiting for Ollama to start (attempt $i/10)..."
+          sleep 3;
+        done &&
         wait
+
+  # ── WhatsApp Commerce Agent ─────────────────────────────────────
+  commerce:
+    build:
+      context: .
+      dockerfile: Dockerfile.commerce
+    container_name: whatsapp-commerce
+    ports:
+      - "8080:8080"   # Admin API + Dashboard
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://commerce:commerce_secret@postgres:5432/commerce
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+      - ./whatsapp_session:/app/whatsapp_session
+    restart: unless-stopped
+
+  # ── Database ────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: commerce-postgres
+    environment:
+      POSTGRES_USER: commerce
+      POSTGRES_PASSWORD: commerce_secret
+      POSTGRES_DB: commerce
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U commerce"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── Cache & Sessions ────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: commerce-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── File Storage (optional) ─────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: commerce-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    restart: unless-stopped
 
 volumes:
   ollama:
+  postgres_data:
+  redis_data:
+  minio_data:

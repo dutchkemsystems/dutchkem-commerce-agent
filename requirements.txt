@@ -1,10 +1,38 @@
-requests>=2.31.0
-python-dotenv>=1.0.0
-openai>=1.40.0
-gradio>=4.44.0
-flask>=3.0.0
-pyyaml>=6.0.1
-packaging>=24.0
+requests>=2.31.0,<3
+python-dotenv>=1.0.0,<2
+openai>=1.40.0,<2
+gradio>=4.44.0,<6
+flask>=3.0.0,<4
+pyyaml>=6.0.1,<7
+packaging>=24.0,<25
 # Model Context Protocol (MCP) server tools — official open-source SDK (MIT).
 # v2 renamed FastMCP -> MCPServer, so pin <2 until you migrate web/mcp_server.py.
 mcp>=1.28,<2
+
+# ── WhatsApp Commerce Agent dependencies ──────────────────────────
+# Database
+sqlalchemy>=2.0.25,<3
+psycopg2-binary>=2.9.9,<3
+alembic>=1.13.0,<2
+redis>=5.0.0,<6
+
+# Payments
+stripe>=7.0.0,<8
+
+# HTTP (async)
+aiohttp>=3.9.0,<4
+
+# File storage
+boto3>=1.34.0,<2
+
+# Data & Analytics
+numpy>=1.26.0,<2
+pandas>=2.2.0,<3
+
+# Testing
+pytest>=8.0.0,<9
+pytest-asyncio>=0.23.0,<1
+pytest-cov>=4.1.0,<6
+
+# Monitoring
+prometheus-client>=0.20.0,<1
