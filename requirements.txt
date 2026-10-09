@@ -30,7 +30,7 @@ numpy>=1.26.0,<2
 pandas>=2.2.0,<3
 
 # Testing
-pytest>=8.0.0,<9
+pytest>=9.1.1,<10
 pytest-asyncio>=0.23.0,<1
 pytest-cov>=4.1.0,<6
 
