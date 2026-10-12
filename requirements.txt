@@ -4,7 +4,7 @@ openai>=1.40.0,<2
 gradio>=4.44.0,<6
 flask>=3.1.3,<4
 pyyaml>=6.0.1,<7
-packaging>=24.0,<25
+packaging>=26.3,<27
 # Model Context Protocol (MCP) server tools — official open-source SDK (MIT).
 # v2 renamed FastMCP -> MCPServer, so pin <2 until you migrate web/mcp_server.py.
 mcp>=1.28,<2
